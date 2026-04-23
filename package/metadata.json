@@ -1,0 +1,14 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{"Email": "", "Name": "llama-cpp-dials"}],
+        "Category": "System Information",
+        "Description": "KDE Plasma dials showing llama-cpp token throughput, context window fill, and a session-total odometer. Requires llama.cpp server running with --metrics.",
+        "Icon": "dialog-scripts",
+        "Id": "org.kde.plasma.llamacppdials",
+        "Name": "llama-cpp Dials",
+        "Version": "0.1.0",
+        "Website": "https://github.com/yappingboy/llama-cpp-dials"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

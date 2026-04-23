@@ -21,6 +21,9 @@ KDE Plasma dial indicators that plug into a local llama-cpp instance, with an od
 - [ ] Compact (panel icon) representation not yet implemented
 - [ ] `llama_kv_cache_usage_ratio` stays at 0 when no slot is active — consider `/slots` fallback for idle state
 - [ ] No Prometheus label support: metrics with `{…}` labels sum only the last label variant per metric name
+- [ ] The dials don't move
+- [ ] the session tokens don't tick up
+- [ ] there are no settings. The user needs to be able to change the llama.cpp server and host.
 
 ## Installation
 

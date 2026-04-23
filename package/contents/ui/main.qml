@@ -15,16 +15,23 @@ PlasmoidItem {
     property real tokensPerSecond:        0
 
     property bool   connected:    false
-    property string errorMessage: "Connecting…"
+    property string statusLine:   "Connecting…"
 
     // For rate calculation
     property real lastTotalTokens: 0
     property real lastPollTime:    0
 
-    // Config shortcuts
-    readonly property string apiUrl:         plasmoid.configuration.apiUrl
-    readonly property int    pollInterval:   plasmoid.configuration.pollInterval
-    readonly property int    maxTokensPerSec: plasmoid.configuration.maxTokensPerSec
+    // Raw diagnostic: first metric data line received, for troubleshooting.
+    property string diagText: ""
+
+    // Config — strip trailing slashes so "/metrics" concatenation is clean.
+    readonly property string apiUrl: {
+        var u = plasmoid.configuration.apiUrl
+        if (!u || u.length === 0) u = "http://localhost:8080"
+        return u.replace(/\/+$/, "")
+    }
+    readonly property int pollInterval:    Math.max(250, plasmoid.configuration.pollInterval)
+    readonly property int maxTokensPerSec: Math.max(1,   plasmoid.configuration.maxTokensPerSec)
 
     // ── Derived ─────────────────────────────────────────────────────────────
     readonly property real sessionTokens: {
@@ -39,7 +46,7 @@ PlasmoidItem {
 
     fullRepresentation: Item {
         implicitWidth:  300
-        implicitHeight: 230
+        implicitHeight: 250
 
         Rectangle {
             anchors.fill: parent
@@ -49,9 +56,9 @@ PlasmoidItem {
             ColumnLayout {
                 anchors.fill:    parent
                 anchors.margins: 14
-                spacing:         10
+                spacing:         8
 
-                // ── Header / status bar ─────────────────────────────────
+                // ── Header / connection status ──────────────────────────
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 6
@@ -61,17 +68,12 @@ PlasmoidItem {
                         color: root.connected ? "#66BB6A" : "#EF5350"
                     }
                     Text {
-                        text:  "llama-cpp"
-                        color: "#aaaaaa"
-                        font.pixelSize: 11
-                        font.family:    "monospace"
-                    }
-                    Item { Layout.fillWidth: true }
-                    Text {
-                        visible:        !root.connected
-                        text:           root.errorMessage
-                        color:          "#EF5350"
-                        font.pixelSize: 10
+                        Layout.fillWidth: true
+                        text:            root.statusLine
+                        color:           root.connected ? "#aaaaaa" : "#EF5350"
+                        font.pixelSize:  10
+                        font.family:     "monospace"
+                        elide:           Text.ElideRight
                     }
                 }
 
@@ -112,16 +114,16 @@ PlasmoidItem {
                     spacing: 8
 
                     DialGauge {
-                        Layout.fillWidth:    true
+                        Layout.fillWidth:       true
                         Layout.preferredHeight: 120
-                        value:      Math.min(root.tokensPerSecond / Math.max(1, root.maxTokensPerSec), 1.0)
+                        value:      Math.min(root.tokensPerSecond / root.maxTokensPerSec, 1.0)
                         centerText: root.tokensPerSecond.toFixed(1)
                         label:      "tok / s"
                         dialColor:  "#4FC3F7"
                     }
 
                     DialGauge {
-                        Layout.fillWidth:    true
+                        Layout.fillWidth:       true
                         Layout.preferredHeight: 120
                         value:      root.kvCacheUsageRatio
                         centerText: Math.round(root.kvCacheUsageRatio * 100) + "%"
@@ -133,6 +135,16 @@ PlasmoidItem {
                             return "#EF5350"
                         }
                     }
+                }
+
+                // ── Diagnostic line (always visible for now) ────────────
+                Text {
+                    Layout.fillWidth: true
+                    text:            root.diagText
+                    color:           "#555555"
+                    font.pixelSize:  9
+                    font.family:     "monospace"
+                    elide:           Text.ElideRight
                 }
             }
         }
@@ -149,18 +161,19 @@ PlasmoidItem {
 
     Component.onCompleted: root.fetchMetrics()
 
-    // Reset and immediately reconnect whenever the user saves a new URL.
     onApiUrlChanged: {
         baselinePromptTokens    = -1
         baselinePredictedTokens = -1
         tokensPerSecond         = 0
         connected               = false
-        errorMessage            = "Connecting…"
+        statusLine              = "Connecting…"
+        diagText                = ""
         fetchMetrics()
     }
 
     // ── Network ─────────────────────────────────────────────────────────────
     function fetchMetrics() {
+        var url = root.apiUrl + "/metrics"
         var xhr = new XMLHttpRequest()
         xhr.onreadystatechange = function() {
             if (xhr.readyState !== XMLHttpRequest.DONE) return
@@ -168,15 +181,17 @@ PlasmoidItem {
                 root.connected = true
                 root.parseMetrics(xhr.responseText)
             } else {
-                root.connected = false
-                root.errorMessage = xhr.status === 0 ? "Cannot connect" : "HTTP " + xhr.status
+                root.connected  = false
+                var code = xhr.status === 0 ? "no response" : "HTTP " + xhr.status
+                root.statusLine = code + " — " + url
+                root.diagText   = ""
             }
         }
-        xhr.open("GET", root.apiUrl + "/metrics")
+        xhr.open("GET", url)
         xhr.timeout = Math.min(root.pollInterval - 50, 4000)
         xhr.ontimeout = function() {
-            root.connected    = false
-            root.errorMessage = "Timeout"
+            root.connected  = false
+            root.statusLine = "Timeout — " + url
         }
         xhr.send()
     }
@@ -184,18 +199,21 @@ PlasmoidItem {
     // ── Parsing ─────────────────────────────────────────────────────────────
     function parseMetrics(text) {
         // Prometheus text format: "metric_name{labels} value [timestamp]"
-        // llama.cpp uses either "llama_" (older) or "llamacpp:" (newer) as prefix,
-        // so we match on the meaningful suffix instead of the full name.
+        // Match by suffix so both "llama_" and "llamacpp:" prefixes work.
         var promptTokens    = 0
         var predictedTokens = 0
         var kvRatio         = 0
+        var linesScanned    = 0
+        var firstDataLine   = ""
 
         var lines = text.split('\n')
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].trim()
             if (line === '' || line.charAt(0) === '#') continue
+            linesScanned++
+            if (firstDataLine === '') firstDataLine = line
 
-            // Split on the FIRST space to get key; value follows (ignore trailing timestamp).
+            // First space separates key from value; ignore optional trailing timestamp.
             var spaceIdx = line.indexOf(' ')
             if (spaceIdx < 0) continue
             var rawKey = line.substring(0, spaceIdx)
@@ -216,14 +234,23 @@ PlasmoidItem {
         var now   = Date.now()
         var total = promptTokens + predictedTokens
 
+        // Update status line and diagnostic
+        root.statusLine = root.apiUrl
+        if (linesScanned === 0) {
+            root.diagText = "⚠ empty response — is --metrics enabled?"
+        } else if (total === 0 && kvRatio === 0) {
+            root.diagText = "⚠ no token metrics found (" + linesScanned + " lines) — " + firstDataLine.substring(0, 60)
+        } else {
+            root.diagText = "p:" + promptTokens + " pr:" + predictedTokens +
+                            " kv:" + Math.round(kvRatio * 100) + "%"
+        }
+
         if (root.baselinePromptTokens < 0) {
-            // First successful fetch — record baseline
             root.baselinePromptTokens    = promptTokens
             root.baselinePredictedTokens = predictedTokens
             root.lastTotalTokens         = total
             root.lastPollTime            = now
         } else if (total < root.lastTotalTokens) {
-            // Server restarted — reset
             root.baselinePromptTokens    = promptTokens
             root.baselinePredictedTokens = predictedTokens
             root.tokensPerSecond         = 0

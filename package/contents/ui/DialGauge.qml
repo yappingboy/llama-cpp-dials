@@ -16,7 +16,7 @@ Item {
         id: canvas
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        width:  Math.min(parent.width, parent.height - 20)
+        width:  Math.max(0, Math.min(parent.width, parent.height - 20))
         height: width
 
         onPaint: {
@@ -26,6 +26,7 @@ Item {
             var cx = width  / 2
             var cy = height / 2
             var r  = cx - 10
+            if (r < 1) return   // not laid out yet — skip draw
             var lineW = 9
 
             // Arc measured clockwise from 3-o'clock (standard canvas):

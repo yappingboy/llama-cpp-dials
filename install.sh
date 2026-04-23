@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Install or upgrade the llama-cpp-dials plasmoid.
+# Uses remove + install (not --upgrade) to guarantee fresh code is loaded.
 set -euo pipefail
 
 ID="org.kde.plasma.llamacppdials"
@@ -10,22 +11,26 @@ if command -v kpackagetool6 &>/dev/null; then
 elif command -v kpackagetool5 &>/dev/null; then
     TOOL=kpackagetool5
 else
-    echo "Error: kpackagetool6 (or kpackagetool5) not found. Install plasma-framework." >&2
+    echo "Error: kpackagetool6 (or kpackagetool5) not found." >&2
     exit 1
 fi
 
-echo "Using $TOOL"
-if $TOOL --type Plasma/Applet --show "$ID" &>/dev/null; then
-    echo "Upgrading existing installation…"
-    $TOOL --type Plasma/Applet --upgrade "$PKG"
-else
-    echo "Installing new plasmoid…"
-    $TOOL --type Plasma/Applet --install "$PKG"
-fi
+echo "Removing old installation (if any)…"
+$TOOL --type Plasma/Applet --remove "$ID" 2>/dev/null || true
+
+echo "Installing fresh package…"
+$TOOL --type Plasma/Applet --install "$PKG"
 
 echo ""
-echo "Done.  Add the widget via 'Add Widgets' (search for 'llama-cpp Dials')."
-echo "Plasmoid ID: $ID"
+echo "────────────────────────────────────────────────"
+echo "Done.  To load the new code:"
+echo "  1. Right-click the widget on your desktop → Remove Widget"
+echo "  2. Right-click desktop → Add Widgets → search 'llama-cpp Dials'"
+echo "  OR restart Plasma: kquitapp6 plasmashell && kstart6 plasmashell"
+echo "────────────────────────────────────────────────"
 echo ""
-echo "Note: your llama.cpp server must be started with the --metrics flag:"
-echo "  ./llama-server --metrics -m model.gguf ..."
+echo "Quick test (no install needed):"
+echo "  plasmoidviewer -a $PKG"
+echo ""
+echo "Note: llama.cpp server must be started with --metrics:"
+echo "  ./llama-server --metrics -m model.gguf"

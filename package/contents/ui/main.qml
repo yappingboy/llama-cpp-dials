@@ -69,7 +69,7 @@ PlasmoidItem {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text:            root.statusLine
+                        text:            "v0.3 · " + root.statusLine
                         color:           root.connected ? "#aaaaaa" : "#EF5350"
                         font.pixelSize:  10
                         font.family:     "monospace"
@@ -137,14 +137,15 @@ PlasmoidItem {
                     }
                 }
 
-                // ── Diagnostic line (always visible for now) ────────────
+                // ── Diagnostic line ─────────────────────────────────────
                 Text {
                     Layout.fillWidth: true
                     text:            root.diagText
-                    color:           "#555555"
+                    color:           "#999999"
                     font.pixelSize:  9
                     font.family:     "monospace"
                     elide:           Text.ElideRight
+                    visible:         root.diagText !== ""
                 }
             }
         }
@@ -184,7 +185,7 @@ PlasmoidItem {
                 root.connected  = false
                 var code = xhr.status === 0 ? "no response" : "HTTP " + xhr.status
                 root.statusLine = code + " — " + url
-                root.diagText   = ""
+                root.diagText   = "check URL and that llama-server is running"
             }
         }
         xhr.open("GET", url)
@@ -192,6 +193,7 @@ PlasmoidItem {
         xhr.ontimeout = function() {
             root.connected  = false
             root.statusLine = "Timeout — " + url
+            root.diagText   = "server took too long to respond"
         }
         xhr.send()
     }

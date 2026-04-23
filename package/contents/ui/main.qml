@@ -149,6 +149,16 @@ PlasmoidItem {
 
     Component.onCompleted: root.fetchMetrics()
 
+    // Reset and immediately reconnect whenever the user saves a new URL.
+    onApiUrlChanged: {
+        baselinePromptTokens    = -1
+        baselinePredictedTokens = -1
+        tokensPerSecond         = 0
+        connected               = false
+        errorMessage            = "Connecting…"
+        fetchMetrics()
+    }
+
     // ── Network ─────────────────────────────────────────────────────────────
     function fetchMetrics() {
         var xhr = new XMLHttpRequest()
@@ -173,24 +183,35 @@ PlasmoidItem {
 
     // ── Parsing ─────────────────────────────────────────────────────────────
     function parseMetrics(text) {
-        // Parse Prometheus text format, handling optional {label=...} suffixes.
-        var metrics = {}
-        var lines   = text.split('\n')
+        // Prometheus text format: "metric_name{labels} value [timestamp]"
+        // llama.cpp uses either "llama_" (older) or "llamacpp:" (newer) as prefix,
+        // so we match on the meaningful suffix instead of the full name.
+        var promptTokens    = 0
+        var predictedTokens = 0
+        var kvRatio         = 0
+
+        var lines = text.split('\n')
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].trim()
             if (line === '' || line.charAt(0) === '#') continue
-            var spaceIdx = line.lastIndexOf(' ')
-            if (spaceIdx < 0) continue
-            var key = line.substring(0, spaceIdx)
-            var braceIdx = key.indexOf('{')
-            if (braceIdx >= 0) key = key.substring(0, braceIdx)
-            var val = parseFloat(line.substring(spaceIdx + 1))
-            if (!isNaN(val)) metrics[key] = val
-        }
 
-        var promptTokens    = metrics['llama_prompt_tokens_total']    || 0
-        var predictedTokens = metrics['llama_tokens_predicted_total'] || 0
-        var kvRatio         = metrics['llama_kv_cache_usage_ratio']   || 0
+            // Split on the FIRST space to get key; value follows (ignore trailing timestamp).
+            var spaceIdx = line.indexOf(' ')
+            if (spaceIdx < 0) continue
+            var rawKey = line.substring(0, spaceIdx)
+            var rest   = line.substring(spaceIdx + 1).trim()
+            var secondSpace = rest.indexOf(' ')
+            var val = parseFloat(secondSpace < 0 ? rest : rest.substring(0, secondSpace))
+            if (isNaN(val)) continue
+
+            // Strip label block: "name{k=v,...}" → "name"
+            var brace = rawKey.indexOf('{')
+            var key   = brace >= 0 ? rawKey.substring(0, brace) : rawKey
+
+            if      (key.indexOf('prompt_tokens_total')    >= 0) promptTokens    += val
+            else if (key.indexOf('tokens_predicted_total') >= 0) predictedTokens += val
+            else if (key.indexOf('kv_cache_usage_ratio')   >= 0) kvRatio          = Math.max(kvRatio, val)
+        }
 
         var now   = Date.now()
         var total = promptTokens + predictedTokens
@@ -211,7 +232,6 @@ PlasmoidItem {
             var delta = total - root.lastTotalTokens
             if (dt > 0.05) {
                 var rawRate = delta / dt
-                // Exponential moving average: fast rise, slow fall
                 root.tokensPerSecond = root.tokensPerSecond * 0.7 + rawRate * 0.3
             }
         }

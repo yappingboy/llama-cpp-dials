@@ -1,34 +1,41 @@
 import QtQuick
 import QtQuick.Controls
-import org.kde.kirigami as Kirigami
+import QtQuick.Layouts
 
-Kirigami.FormLayout {
-    id: page
+// No Kirigami dependency — plain Qt Quick Controls only.
+ColumnLayout {
+    property alias cfg_apiUrl:          urlField.text
+    property alias cfg_pollInterval:    pollSpinner.value
+    property alias cfg_maxTokensPerSec: maxTpsSpinner.value
 
-    // cfg_ prefix is the Plasma convention for auto-binding to KConfig keys.
-    property alias cfg_apiUrl:         apiUrlField.text
-    property alias cfg_pollInterval:   pollIntervalSpinBox.value
-    property alias cfg_maxTokensPerSec: maxTpsSpinBox.value
+    spacing: 12
+    Layout.fillWidth: true
 
-    TextField {
-        id: apiUrlField
-        Kirigami.FormData.label: "llama-cpp API URL:"
-        placeholderText: "http://localhost:8080"
+    GridLayout {
+        columns: 2
+        columnSpacing: 16
+        rowSpacing: 8
+        Layout.fillWidth: true
+
+        Label { text: "API URL" }
+        TextField {
+            id: urlField
+            Layout.fillWidth: true
+            placeholderText: "http://localhost:8080"
+        }
+
+        Label { text: "Poll interval (ms)" }
+        SpinBox {
+            id: pollSpinner
+            from: 250; to: 30000; stepSize: 250
+        }
+
+        Label { text: "Tok/s dial full-scale" }
+        SpinBox {
+            id: maxTpsSpinner
+            from: 1; to: 2000; stepSize: 10
+        }
     }
 
-    SpinBox {
-        id: pollIntervalSpinBox
-        from:      250
-        to:        30000
-        stepSize:  250
-        Kirigami.FormData.label: "Poll interval (ms):"
-    }
-
-    SpinBox {
-        id: maxTpsSpinBox
-        from:      1
-        to:        2000
-        stepSize:  10
-        Kirigami.FormData.label: "Tok/s dial full-scale:"
-    }
+    Item { Layout.fillHeight: true }
 }

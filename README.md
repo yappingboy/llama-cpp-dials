@@ -5,7 +5,7 @@ KDE Plasma dial indicators that plug into a local llama-cpp instance, with an od
 
 ## Status
 - Current phase: building
-- Last updated: 2026-04-23
+- Last updated: 2026-04-23 (fix: token parsing, URL config)
 
 ## Tech Stack
 - Frontend: KDE Plasma 6 plasmoid (QML / Canvas)
